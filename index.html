@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Rec Studio</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <!-- Стартовый экран: нужен жест пользователя для микрофона и звука -->
@@ -23,6 +23,7 @@
   <header class="top">
     <div class="row">
       <select id="micSelect" class="select" title="Микрофон"></select>
+      <button id="micBtn" class="chip" title="Настройки и тест микрофона">🎛</button>
       <button id="latencyBtn" class="chip" title="Калибровка задержки">⏱ <span id="latencyLabel">—</span></button>
     </div>
     <div class="meter"><div id="meterFill"></div></div>
@@ -48,6 +49,8 @@
         <div class="controls">
           <span class="name static">Бит</span>
           <input id="beatVol" class="vol" type="range" min="0" max="1.5" step="0.01" value="1" title="Громкость бита">
+          <button id="beatM" class="mini m" title="Mute">M</button>
+          <button id="beatS" class="mini s" title="Solo">S</button>
         </div>
       </div>
       <div id="tracks"></div>
@@ -91,6 +94,24 @@
     </div>
   </div>
 
+  <!-- Микрофон: режим и тест частот -->
+  <div id="micScreen" class="overlay hidden">
+    <div class="sheet scroll">
+      <h2>Микрофон</h2>
+      <div id="micInfo" class="small mic-info"></div>
+      <div class="small muted" style="margin-top:10px">Режим включения:</div>
+      <div id="micModes" class="modes"></div>
+      <p class="small muted">Нажми «Тест», 4 секунды говори и пошипи «ссс-шшш». Чем выше линия справа, тем шире звук.</p>
+      <canvas id="specCanvas" class="spec"></canvas>
+      <div id="specResult" class="cal-result small">—</div>
+      <div class="row">
+        <button id="micTestRun" class="btn primary">Тест 4 сек</button>
+        <button id="micTestPlay" class="btn" disabled>▶ Послушать</button>
+        <button id="micClose" class="btn ghost">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
   <div id="busy" class="overlay hidden"><div class="sheet center"><div class="spinner"></div><p id="busyText">Готовлю файлы…</p></div></div>
   <div id="toast" class="toast hidden"></div>
 
@@ -114,7 +135,7 @@
     </div>
   </template>
 
-  <script src="zip-wav.js"></script>
-  <script src="app.js"></script>
+  <script src="zip-wav.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

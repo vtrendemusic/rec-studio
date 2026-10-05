@@ -86,21 +86,45 @@ function haptic(type = 'light') {
 }
 
 // ---------- Инициализация звука ----------
+// Режимы включения микрофона. iOS Safari ведёт себя по-разному, поэтому даём выбрать.
+const MIC_MODES = {
+  raw:   { title: 'Чистый (по умолчанию)', hint: 'Обработка выключена при запросе и ещё раз после включения' },
+  apply: { title: 'Чистый, способ 2', hint: 'Микрофон включается обычным, потом обработка выключается. Помогает на части iPhone' },
+  raw2:  { title: 'Чистый, без режима сессии', hint: 'Как «Чистый», но не трогаем аудиосессию iOS' },
+  voice: { title: 'Голосовой (с шумодавом)', hint: 'Обработка как в звонке: меньше шума, но узкий звук. Для сравнения' },
+};
+S.micMode = MIC_MODES[localStorage.getItem('micMode')] ? localStorage.getItem('micMode') : 'raw';
+const RAW = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
+function setAudioSession(mode) {
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = mode === 'raw2' ? 'auto' : 'play-and-record';
+  } catch (e) {}
+}
+
 async function openMic(deviceId) {
   if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
-  const audio = {
-    echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1,
-  };
+  const mode = S.micMode;
+  setAudioSession(mode);
+  let audio;
+  if (mode === 'voice') audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  else if (mode === 'apply') audio = {};
+  else audio = { ...RAW };
   if (deviceId) audio.deviceId = { exact: deviceId };
+  const req = (a) => navigator.mediaDevices.getUserMedia({ audio: Object.keys(a).length ? a : true });
   try {
-    S.stream = await navigator.mediaDevices.getUserMedia({ audio });
+    S.stream = await req(audio);
   } catch (e) {
     if (deviceId && e.name === 'OverconstrainedError') {
       delete audio.deviceId;
-      S.stream = await navigator.mediaDevices.getUserMedia({ audio });
+      S.stream = await req(audio);
     } else throw e;
   }
   const track = S.stream.getAudioTracks()[0];
+  // Обходной путь для iOS: флаги, переданные в getUserMedia, игнорируются — применяем их к живой дорожке
+  if (mode !== 'voice') {
+    try { await track.applyConstraints(RAW); } catch (e) { console.warn('applyConstraints', e); }
+  }
   S.micLabel = track.label || 'Микрофон';
   S.deviceId = (track.getSettings && track.getSettings().deviceId) || deviceId || '';
   localStorage.setItem('micId', S.deviceId);
@@ -108,6 +132,23 @@ async function openMic(deviceId) {
   if (S.ctx) connectMic();
   await refreshDevices();
   loadLatencyForMic();
+}
+
+// iOS сам переключает запись на микрофон наушников. Если есть встроенный — берём его.
+const BUILTIN_RE = /iphone|ipad|built-?in|встро|internal|microphone array|телефон/i;
+const HEADSET_RE = /airpods|bluetooth|\bbt\b|buds|hands-?free|headset|headphone|наушник|гарнитур|beats|earpods|usb/i;
+async function preferBuiltInMic() {
+  if (!S.micLabel || BUILTIN_RE.test(S.micLabel) || !HEADSET_RE.test(S.micLabel)) return;
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+  const builtin = devs.find((d) => BUILTIN_RE.test(d.label));
+  if (builtin && builtin.deviceId !== S.deviceId) {
+    try { await openMic(builtin.deviceId); } catch (e) { console.warn(e); }
+  }
+}
+
+function micSettings() {
+  const t = S.stream && S.stream.getAudioTracks()[0];
+  return t && t.getSettings ? t.getSettings() : {};
 }
 
 function connectMic() {
@@ -131,23 +172,21 @@ async function refreshDevices() {
   sel.value = S.deviceId;
   if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
 
-  const bt = /airpods|bluetooth|\bbt\b|buds|hands-?free|headset|beats/i.test(S.micLabel);
+  const bt = HEADSET_RE.test(S.micLabel) && !BUILTIN_RE.test(S.micLabel);
   const warn = $('micWarn');
   if (bt) {
-    warn.textContent = `Сейчас пишет «${S.micLabel}». Это Bluetooth: качество как в звонке и плавающая задержка. Лучше проводные наушники или встроенный микрофон.`;
+    warn.textContent = `Сейчас пишет микрофон наушников («${S.micLabel}»). У Bluetooth-наушников он узкий, как в звонке. Выбери вверху микрофон iPhone. Если его нет в списке, запиши с проводными наушниками или без наушников.`;
     warn.classList.remove('hidden');
   } else warn.classList.add('hidden');
 }
 
 async function initAudio() {
-  // Safari 16.4+: явно просим режим «играть и записывать»
-  try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
-
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     throw new Error('Браузер не даёт доступ к микрофону. Нужен HTTPS и свежая версия Telegram/браузера.');
   }
   // Сначала микрофон, потом контекст: на iOS так частота дискретизации не скачет
   await openMic(S.deviceId);
+  if (!localStorage.getItem('micManual')) await preferBuiltInMic();
 
   const AC = window.AudioContext || window.webkitAudioContext;
   S.ctx = new AC({ latencyHint: 'interactive' });
@@ -227,7 +266,7 @@ function assemble(chunks, fromFrame) {
 }
 
 // ---------- Задержка ----------
-function latencyKey() { return 'lat:' + (S.micLabel || 'default'); }
+function latencyKey() { return 'lat:' + S.micMode + ':' + (S.micLabel || 'default'); }
 function loadLatencyForMic() {
   const v = localStorage.getItem(latencyKey());
   if (v !== null) { S.latency = parseFloat(v); S.latencyEstimated = false; }
@@ -401,7 +440,8 @@ function laneTap(e) {
 }
 
 // ---------- Воспроизведение ----------
-function anySolo() { return S.tracks.some((t) => t.solo); }
+function anySolo() { return S.beatSolo || S.tracks.some((t) => t.solo); }
+function beatGainValue() { return S.beatMute || (anySolo() && !S.beatSolo) ? 0 : S.beatVol; }
 function trackGainValue(t) { return t.mute || (anySolo() && !t.solo) ? 0 : t.vol; }
 function applyGains() {
   for (const t of S.tracks) {
@@ -410,7 +450,10 @@ function applyGains() {
     t.el.querySelector('.m').classList.toggle('on', t.mute);
     t.el.querySelector('.s').classList.toggle('on', t.solo);
   }
-  if (S.beatGain) S.beatGain.gain.value = S.beatVol;
+  if (S.beatGain) S.beatGain.gain.value = beatGainValue();
+  $('beatM').classList.toggle('on', !!S.beatMute);
+  $('beatS').classList.toggle('on', !!S.beatSolo);
+  $('beatLane').closest('.track').classList.toggle('muted-track', beatGainValue() === 0);
 }
 
 function currentPos() { return S.p0 + (S.ctx.currentTime - S.t0); }
@@ -422,7 +465,7 @@ function startPlayback() {
   S.t0 = when; S.p0 = P; S.sources = [];
 
   S.beatGain = ctx.createGain();
-  S.beatGain.gain.value = S.beatVol;
+  S.beatGain.gain.value = beatGainValue();
   S.beatGain.connect(S.master);
   if (S.beat && P < S.beat.buffer.duration) {
     const src = ctx.createBufferSource();
@@ -614,7 +657,7 @@ async function exportProject() {
     const off = new OfflineAudioContext(2, N, sr);
     if (S.beat) {
       const s = off.createBufferSource(), g = off.createGain();
-      s.buffer = S.beat.buffer; g.gain.value = S.beatVol; s.connect(g).connect(off.destination); s.start(0);
+      s.buffer = S.beat.buffer; g.gain.value = beatGainValue(); s.connect(g).connect(off.destination); s.start(0);
     }
     for (const t of S.tracks) {
       const gv = trackGainValue(t);
@@ -700,7 +743,7 @@ function saveMeta() {
   clearTimeout(metaTimer);
   metaTimer = setTimeout(() => {
     const meta = {
-      bpm: S.bpm, beatVol: S.beatVol, beatName: S.beat ? S.beat.name : null, nextId: S.nextId,
+      bpm: S.bpm, beatVol: S.beatVol, beatMute: !!S.beatMute, beatSolo: !!S.beatSolo, beatName: S.beat ? S.beat.name : null, nextId: S.nextId,
       tracks: S.tracks.map((t) => ({ id: t.id, name: t.name, start: t.start, nudge: t.nudge, vol: t.vol, mute: t.mute, solo: t.solo })),
     };
     idb('meta', 'readwrite', (st) => st.put(meta, 'project'));
@@ -724,6 +767,7 @@ async function restoreProject() {
   if (!meta) return;
   S.bpm = meta.bpm || 120; $('bpmInput').value = S.bpm;
   S.beatVol = meta.beatVol ?? 1; $('beatVol').value = S.beatVol;
+  S.beatMute = !!meta.beatMute; S.beatSolo = !!meta.beatSolo; applyGains();
   S.nextId = meta.nextId || 1;
   const beat = await idb('audio', 'readonly', (st) => st.get('beat'));
   if (beat && beat.bytes) {
@@ -742,6 +786,7 @@ async function newProject() {
   stopAll();
   S.tracks.forEach((t) => t.el.remove());
   S.tracks = []; S.beat = null; S.cursor = 0; S.nextId = 1;
+  S.beatMute = false; S.beatSolo = false; applyGains();
   $('beatName').textContent = 'Бит не загружен. Можно записывать и без него.';
   await idb('audio', 'readwrite', (st) => st.clear());
   await idb('meta', 'readwrite', (st) => st.clear());
@@ -769,6 +814,7 @@ $('startBtn').addEventListener('click', async () => {
 
 $('micSelect').addEventListener('change', async (e) => {
   stopAll();
+  localStorage.setItem('micManual', '1');
   try { await openMic(e.target.value); toast('Микрофон: ' + S.micLabel); }
   catch (err) { toast('Не удалось переключить микрофон: ' + err.message); }
 });
@@ -800,6 +846,8 @@ $('bpmInput').addEventListener('change', (e) => {
 $('beatVol').addEventListener('input', (e) => { S.beatVol = parseFloat(e.target.value); applyGains(); });
 $('beatVol').addEventListener('change', saveMeta);
 $('beatLane').addEventListener('click', laneTap);
+$('beatM').addEventListener('click', () => { S.beatMute = !S.beatMute; applyGains(); saveMeta(); });
+$('beatS').addEventListener('click', () => { S.beatSolo = !S.beatSolo; applyGains(); saveMeta(); });
 
 $('playBtn').addEventListener('click', () => {
   if (S.recording) stopRecording();
@@ -827,6 +875,158 @@ $('calRun').addEventListener('click', runCalibration);
 $('calManualSave').addEventListener('click', () => {
   const v = parseFloat($('calManual').value);
   if (v >= 0 && v <= 1000) { saveLatency(v / 1000); toast('Задержка сохранена'); }
+});
+
+// ---------- Экран микрофона: режим и тест частот ----------
+function renderMicInfo() {
+  const st = micSettings();
+  const yn = (v, goodWhenFalse = true) => v === undefined ? '<span class="muted">не сообщает</span>'
+    : (v === !goodWhenFalse ? '<span class="good">выкл</span>' : '<span class="bad">вкл</span>');
+  const isHeadset = HEADSET_RE.test(S.micLabel) && !BUILTIN_RE.test(S.micLabel);
+  $('micInfo').innerHTML =
+    `Пишет: <b>${S.micLabel}</b> ${isHeadset ? '<span class="bad">(наушники)</span>' : ''}<br>` +
+    `Эхоподавление: ${yn(st.echoCancellation === undefined ? undefined : !st.echoCancellation, false)} · ` +
+    `Шумодав: ${yn(st.noiseSuppression === undefined ? undefined : !st.noiseSuppression, false)} · ` +
+    `Автогромкость: ${yn(st.autoGainControl === undefined ? undefined : !st.autoGainControl, false)}<br>` +
+    `Частота: ${st.sampleRate ? st.sampleRate + ' Гц (мик)' : '—'} · ${S.ctx ? S.ctx.sampleRate + ' Гц (студия)' : ''}`;
+  const box = $('micModes');
+  box.innerHTML = '';
+  for (const [k, m] of Object.entries(MIC_MODES)) {
+    const b = document.createElement('button');
+    b.className = 'mode' + (k === S.micMode ? ' on' : '');
+    b.innerHTML = `${m.title}<span class="h">${m.hint}</span>`;
+    b.addEventListener('click', async () => {
+      if (k === S.micMode) return;
+      S.micMode = k; localStorage.setItem('micMode', k);
+      busy('Переключаю микрофон…');
+      try { await openMic(S.deviceId); } catch (e) { toast('Ошибка: ' + e.message); }
+      busy(false);
+      renderMicInfo();
+    });
+    box.appendChild(b);
+  }
+}
+
+// Простое БПФ (radix-2, на месте)
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const a = -2 * Math.PI / len, wr = Math.cos(a), wi = Math.sin(a);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const p = i + k, q = p + len / 2;
+        const tr = re[q] * cr - im[q] * ci, ti = re[q] * ci + im[q] * cr;
+        re[q] = re[p] - tr; im[q] = im[p] - ti; re[p] += tr; im[p] += ti;
+        const ncr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = ncr;
+      }
+    }
+  }
+}
+
+// Средний спектр громких фрагментов записи, в дБ
+function spectrum(data, sr) {
+  const N = 4096, half = N / 2, acc = new Float64Array(half);
+  const win = new Float64Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+  let frames = 0;
+  for (let p = 0; p + N <= data.length; p += N / 2) {
+    let e = 0;
+    for (let i = 0; i < N; i++) e += data[p + i] * data[p + i];
+    if (Math.sqrt(e / N) < 0.003) continue; // тишину не считаем
+    const re = new Float64Array(N), im = new Float64Array(N);
+    for (let i = 0; i < N; i++) re[i] = data[p + i] * win[i];
+    fft(re, im);
+    for (let k = 0; k < half; k++) acc[k] += re[k] * re[k] + im[k] * im[k];
+    frames++;
+  }
+  if (!frames) return null;
+  const db = new Float64Array(half);
+  for (let k = 0; k < half; k++) db[k] = 10 * Math.log10(acc[k] / frames + 1e-20);
+  return { db, binHz: sr / N };
+}
+
+function drawSpectrum(spec, sr) {
+  const c = $('specCanvas'), dpr = window.devicePixelRatio || 1;
+  c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
+  const g = c.getContext('2d'), w = c.width, h = c.height;
+  g.clearRect(0, 0, w, h);
+  const maxF = Math.min(sr / 2, 22000);
+  g.fillStyle = 'rgba(255,255,255,.35)'; g.font = `${10 * dpr}px sans-serif`;
+  for (const f of [1000, 4000, 8000, 12000, 16000, 20000]) {
+    if (f > maxF) continue;
+    const x = (f / maxF) * w;
+    g.fillRect(x, 0, 1, h);
+    g.fillText(f / 1000 + 'k', x + 3 * dpr, 12 * dpr);
+  }
+  if (!spec) return;
+  let top = -Infinity;
+  for (const v of spec.db) top = Math.max(top, v);
+  g.strokeStyle = '#b9a8ff'; g.lineWidth = 1.5 * dpr; g.beginPath();
+  for (let x = 0; x < w; x++) {
+    const k = Math.min(spec.db.length - 1, Math.floor((x / w) * maxF / spec.binHz));
+    const y = h - Math.max(0, Math.min(1, (spec.db[k] - (top - 90)) / 90)) * h;
+    x ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
+
+let micTestBuffer = null;
+async function runMicTest() {
+  stopAll();
+  const sr = S.ctx.sampleRate;
+  $('micTestRun').disabled = true; $('micTestPlay').disabled = true;
+  $('specResult').textContent = 'Говори и шипи «ссс-шшш»… 4';
+  startCapture();
+  const f0 = Math.round(S.ctx.currentTime * sr);
+  for (let i = 3; i >= 1; i--) { await new Promise((r) => setTimeout(r, 1000)); $('specResult').textContent = 'Говори и шипи «ссс-шшш»… ' + i; }
+  await new Promise((r) => setTimeout(r, 1000));
+  const data = assemble(await stopCapture(), f0);
+  $('micTestRun').disabled = false;
+  micTestBuffer = S.ctx.createBuffer(1, Math.max(1, data.length), sr);
+  if (data.length) micTestBuffer.copyToChannel(data, 0);
+  $('micTestPlay').disabled = !data.length;
+
+  const spec = spectrum(data, sr);
+  drawSpectrum(spec, sr);
+  if (!spec) { $('specResult').textContent = 'Слишком тихо — ничего не записалось. Проверь микрофон.'; return; }
+  // Сглаживаем спектр (~200 Гц), берём самый громкий участок речи 300 Гц–10 кГц
+  // и ищем последнюю частоту, где уровень не ниже его на 45 дБ
+  const W = 16, sm = new Float64Array(spec.db.length);
+  for (let k = 0; k < sm.length; k++) {
+    let sum = 0, n = 0;
+    for (let j = Math.max(0, k - W / 2); j < Math.min(sm.length, k + W / 2); j++) { sum += Math.pow(10, spec.db[j] / 10); n++; }
+    sm[k] = 10 * Math.log10(sum / n + 1e-20);
+  }
+  let top = -Infinity;
+  for (let k = Math.round(300 / spec.binHz); k < Math.round(10000 / spec.binHz); k++) top = Math.max(top, sm[k]);
+  let cut = 0;
+  for (let k = sm.length - 1; k > 0; k--) if (sm[k] > top - 45) { cut = k * spec.binHz; break; }
+  const kHz = (cut / 1000).toFixed(1);
+  $('specResult').innerHTML = cut >= 14000
+    ? `✅ Звук до ~${kHz} кГц: широкий, обработки нет`
+    : cut >= 10000
+      ? `🟡 Звук до ~${kHz} кГц: верх подрезан. Попробуй другой режим ниже`
+      : `🔴 Звук до ~${kHz} кГц: «телефонный». Скорее всего пишет микрофон Bluetooth-наушников или включена обработка`;
+}
+
+$('micBtn').addEventListener('click', () => {
+  stopAll();
+  renderMicInfo();
+  drawSpectrum(null, S.ctx.sampleRate);
+  $('micScreen').classList.remove('hidden');
+});
+$('micClose').addEventListener('click', () => $('micScreen').classList.add('hidden'));
+$('micTestRun').addEventListener('click', runMicTest);
+$('micTestPlay').addEventListener('click', () => {
+  if (!micTestBuffer) return;
+  const s = S.ctx.createBufferSource(); s.buffer = micTestBuffer; s.connect(S.master); s.start();
 });
 
 $('exportBtn').addEventListener('click', exportProject);

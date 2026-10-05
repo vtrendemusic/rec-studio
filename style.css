@@ -132,3 +132,14 @@ main { padding: 0 16px; }
   position: fixed; left: 16px; right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 30;
   background: #2a2a35; padding: 12px 14px; border-radius: 12px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,.4);
 }
+
+.sheet.scroll { max-height: calc(100vh - 32px); overflow-y: auto; }
+.mic-info { background: #101016; border-radius: 10px; padding: 10px 12px; line-height: 1.6; }
+.mic-info b { color: var(--text); }
+.mic-info .bad { color: var(--warn); }
+.mic-info .good { color: var(--ok); }
+.modes { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.mode { text-align: left; background: var(--card2); border: 1px solid transparent; border-radius: 10px; padding: 10px 12px; }
+.mode.on { border-color: var(--accent); }
+.mode .h { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.spec { width: 100%; height: 120px; display: block; background: #101016; border-radius: 10px; margin-top: 8px; }
