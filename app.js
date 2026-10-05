@@ -172,12 +172,18 @@ async function refreshDevices() {
   sel.value = S.deviceId;
   if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
 
-  const bt = HEADSET_RE.test(S.micLabel) && !BUILTIN_RE.test(S.micLabel);
+  const BT_RE = /airpods|bluetooth|\bbt\b|buds|hands-?free|beats/i;
+  const micIsBt = BT_RE.test(S.micLabel);
+  const btConnected = devs.some((d) => BT_RE.test(d.label));
   const warn = $('micWarn');
-  if (bt) {
-    warn.textContent = `Сейчас пишет микрофон наушников («${S.micLabel}»). У Bluetooth-наушников он узкий, как в звонке. Выбери вверху микрофон iPhone. Если его нет в списке, запиши с проводными наушниками или без наушников.`;
-    warn.classList.remove('hidden');
-  } else warn.classList.add('hidden');
+  let msg = '';
+  if (micIsBt) {
+    msg = `Пишет микрофон Bluetooth-наушников («${S.micLabel}»): узкий звук, как в звонке. Для нормальной записи нужны проводные наушники.`;
+  } else if (btConnected) {
+    msg = 'Подключены Bluetooth-наушники. Пока пишет микрофон iPhone, Safari выводит звук в динамик, а не в наушники: это ограничение iOS для сайтов. Для записи нужны проводные наушники.';
+  }
+  warn.textContent = msg;
+  warn.classList.toggle('hidden', !msg);
 }
 
 async function initAudio() {
@@ -982,10 +988,10 @@ async function runMicTest() {
   stopAll();
   const sr = S.ctx.sampleRate;
   $('micTestRun').disabled = true; $('micTestPlay').disabled = true;
-  $('specResult').textContent = 'Говори и шипи «ссс-шшш»… 4';
+  $('specResult').textContent = 'Звени ключами у микрофона… 4';
   startCapture();
   const f0 = Math.round(S.ctx.currentTime * sr);
-  for (let i = 3; i >= 1; i--) { await new Promise((r) => setTimeout(r, 1000)); $('specResult').textContent = 'Говори и шипи «ссс-шшш»… ' + i; }
+  for (let i = 3; i >= 1; i--) { await new Promise((r) => setTimeout(r, 1000)); $('specResult').textContent = 'Звени ключами у микрофона… ' + i; }
   await new Promise((r) => setTimeout(r, 1000));
   const data = assemble(await stopCapture(), f0);
   $('micTestRun').disabled = false;
@@ -1009,6 +1015,11 @@ async function runMicTest() {
   let cut = 0;
   for (let k = sm.length - 1; k > 0; k--) if (sm[k] > top - 45) { cut = k * spec.binHz; break; }
   const kHz = (cut / 1000).toFixed(1);
+  const nyq = S.ctx.sampleRate / 2;
+  if (nyq < 16000) {
+    $('specResult').innerHTML = `🔴 Студия работает на ${S.ctx.sampleRate} Гц: выше ${(nyq / 1000).toFixed(0)} кГц звука быть не может. Перезапусти приложение без Bluetooth-наушников`;
+    return;
+  }
   $('specResult').innerHTML = cut >= 14000
     ? `✅ Звук до ~${kHz} кГц: широкий, обработки нет`
     : cut >= 10000
