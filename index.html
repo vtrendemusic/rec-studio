@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Rec Studio</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Стартовый экран: нужен жест пользователя для микрофона и звука -->
+  <div id="startScreen" class="overlay">
+    <div class="sheet center">
+      <div class="logo">●</div>
+      <h1>Rec Studio</h1>
+      <p class="muted">Записывай вокал поверх бита и выгружай дорожки в WAV для Ableton.</p>
+      <p class="muted small">Лучше всего работает с <b>проводными наушниками</b>. Bluetooth даёт плавающую задержку.</p>
+      <button id="startBtn" class="btn primary big">Начать</button>
+      <p id="startError" class="error"></p>
+    </div>
+  </div>
+
+  <header class="top">
+    <div class="row">
+      <select id="micSelect" class="select" title="Микрофон"></select>
+      <button id="latencyBtn" class="chip" title="Калибровка задержки">⏱ <span id="latencyLabel">—</span></button>
+    </div>
+    <div class="meter"><div id="meterFill"></div></div>
+    <p id="micWarn" class="warn hidden"></p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="row">
+        <label class="btn" for="beatInput">🎵 Загрузить бит</label>
+        <input id="beatInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" hidden>
+        <div class="bpm">
+          <input id="bpmInput" type="number" min="40" max="250" step="0.01" value="120" inputmode="decimal">
+          <span>BPM</span>
+        </div>
+      </div>
+      <div id="beatName" class="muted small">Бит не загружен. Можно записывать и без него.</div>
+    </section>
+
+    <section id="timeline" class="timeline">
+      <div class="track beat-track">
+        <div class="lane" id="beatLane"><canvas></canvas></div>
+        <div class="controls">
+          <span class="name static">Бит</span>
+          <input id="beatVol" class="vol" type="range" min="0" max="1.5" step="0.01" value="1" title="Громкость бита">
+        </div>
+      </div>
+      <div id="tracks"></div>
+    </section>
+
+    <section class="card actions">
+      <button id="exportBtn" class="btn primary">⬇︎ Экспорт WAV для Ableton</button>
+      <button id="newBtn" class="btn ghost">Новый проект</button>
+    </section>
+    <div class="spacer"></div>
+  </main>
+
+  <footer class="transport">
+    <button id="homeBtn" class="tbtn" title="В начало">⏮</button>
+    <button id="playBtn" class="tbtn" title="Play / Stop">▶</button>
+    <button id="recBtn" class="tbtn rec" title="Запись">●</button>
+    <div id="timeLabel" class="time">0:00.0</div>
+  </footer>
+
+  <!-- Калибровка -->
+  <div id="calScreen" class="overlay hidden">
+    <div class="sheet">
+      <h2>Калибровка задержки</h2>
+      <ol class="small">
+        <li>Подключи наушники, с которыми будешь писать.</li>
+        <li>Поднеси один наушник вплотную к микрофону телефона (низ корпуса). Без наушников просто включи громкость.</li>
+        <li>Нажми «Запустить» и не шуми 7 секунд.</li>
+      </ol>
+      <div id="calResult" class="cal-result">—</div>
+      <div class="row">
+        <button id="calRun" class="btn primary">Запустить</button>
+        <button id="calClose" class="btn ghost">Закрыть</button>
+      </div>
+      <details>
+        <summary class="small muted">Ввести задержку вручную</summary>
+        <div class="row">
+          <input id="calManual" type="number" step="1" min="0" max="1000" inputmode="numeric" class="num"> <span class="small">мс</span>
+          <button id="calManualSave" class="btn">Сохранить</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div id="busy" class="overlay hidden"><div class="sheet center"><div class="spinner"></div><p id="busyText">Готовлю файлы…</p></div></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <template id="trackTpl">
+    <div class="track">
+      <div class="lane"><canvas></canvas></div>
+      <div class="controls">
+        <input class="name" maxlength="40">
+        <button class="mini m" title="Mute">M</button>
+        <button class="mini s" title="Solo">S</button>
+        <button class="mini del" title="Удалить">✕</button>
+      </div>
+      <div class="controls">
+        <input class="vol" type="range" min="0" max="1.5" step="0.01" value="1" title="Громкость">
+        <div class="nudge">
+          <button data-d="-10">«</button><button data-d="-1">‹</button>
+          <span class="nv">0 мс</span>
+          <button data-d="1">›</button><button data-d="10">»</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="zip-wav.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

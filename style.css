@@ -1,0 +1,134 @@
+:root {
+  --bg: #0e0e12;
+  --card: #18181f;
+  --card2: #22222b;
+  --text: #f1f1f4;
+  --muted: #8b8b98;
+  --accent: #7c5cff;
+  --rec: #ff3b4e;
+  --beat: #4fc3f7;
+  --wave: #b9a8ff;
+  --ok: #3ddc84;
+  --warn: #ffb020;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, "Segoe UI", sans-serif;
+  padding: env(safe-area-inset-top) 0 0;
+  overscroll-behavior: none;
+  user-select: none; -webkit-user-select: none;
+}
+input, select, button { font: inherit; color: inherit; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.error { color: var(--rec); min-height: 1em; }
+.row { display: flex; gap: 8px; align-items: center; }
+
+.top { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 10px 16px 6px; }
+.select {
+  flex: 1; min-width: 0; background: var(--card); border: 1px solid #2c2c36; border-radius: 10px;
+  padding: 8px 10px; appearance: none; -webkit-appearance: none;
+}
+.chip { background: var(--card); border: 1px solid #2c2c36; border-radius: 10px; padding: 8px 10px; white-space: nowrap; }
+.chip.bad { border-color: var(--warn); color: var(--warn); }
+.meter { height: 4px; background: var(--card); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+#meterFill { height: 100%; width: 0; background: var(--ok); transition: width 60ms linear; }
+.warn { color: var(--warn); font-size: 13px; margin: 6px 0 0; }
+
+main { padding: 0 16px; }
+.card { background: var(--card); border-radius: var(--radius); padding: 12px; margin: 10px 0; }
+.card .row + div { margin-top: 8px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--card2); border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+}
+.btn.primary { background: var(--accent); color: #fff; font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.big { width: 100%; padding: 14px; font-size: 17px; margin-top: 12px; }
+.btn:disabled { opacity: .4; }
+.bpm { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.bpm input, .num {
+  width: 76px; background: var(--card2); border: 0; border-radius: 8px; padding: 8px; text-align: center;
+}
+.actions { display: flex; flex-direction: column; gap: 6px; }
+
+/* Таймлайн: у всех дорожек одна ширина, поэтому время совпадает по горизонтали */
+.timeline { margin: 10px 0; --ph: 0; --cur: 0; }
+.track { background: var(--card); border-radius: var(--radius); padding: 8px; margin-bottom: 8px; }
+.track.muted-track .lane canvas { opacity: .3; }
+.lane {
+  position: relative; height: 56px; background: #101016; border-radius: 8px; overflow: hidden;
+  touch-action: manipulation;
+}
+.beat-track .lane { height: 48px; }
+.lane canvas { width: 100%; height: 100%; display: block; }
+.lane::before, .lane::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; pointer-events: none;
+}
+.lane::before { left: calc(var(--cur) * 100%); background: rgba(255,255,255,.35); }
+.lane::after { left: calc(var(--ph) * 100%); background: #fff; }
+.recording .lane::after { background: var(--rec); }
+
+.controls { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.name {
+  flex: 1; min-width: 0; background: transparent; border: 0; border-bottom: 1px solid transparent;
+  padding: 4px 2px; font-weight: 600;
+}
+.name:focus { outline: none; border-bottom-color: var(--accent); }
+.name.static { color: var(--beat); }
+.mini {
+  width: 34px; height: 30px; border: 0; border-radius: 8px; background: var(--card2); font-weight: 700; font-size: 13px;
+}
+.mini.m.on { background: var(--warn); color: #000; }
+.mini.s.on { background: var(--ok); color: #000; }
+.mini.del { color: var(--muted); }
+.vol { flex: 1; min-width: 0; accent-color: var(--accent); }
+.nudge { display: flex; align-items: center; gap: 2px; }
+.nudge button { width: 30px; height: 30px; border: 0; border-radius: 8px; background: var(--card2); }
+.nudge .nv { min-width: 58px; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.spacer { height: calc(90px + env(safe-area-inset-bottom)); }
+.transport {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(14,14,18,.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid #22222b;
+}
+.tbtn { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--card2); font-size: 20px; }
+.tbtn.rec { color: var(--rec); font-size: 26px; }
+.tbtn.rec.on { background: var(--rec); color: #fff; animation: pulse 1s infinite; }
+.tbtn.play.on { background: var(--accent); }
+@keyframes pulse { 50% { opacity: .6; } }
+.time { margin-left: auto; font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.75);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+#startScreen { background: var(--bg); }
+.sheet { background: var(--card); border-radius: 18px; padding: 20px; width: 100%; max-width: 420px; }
+.sheet.center { text-align: center; }
+.sheet h1, .sheet h2 { margin: 0 0 8px; }
+.sheet ol { padding-left: 20px; color: var(--muted); }
+.sheet details { margin-top: 14px; }
+.sheet details .row { margin-top: 8px; }
+.logo { font-size: 42px; color: var(--rec); }
+.cal-result {
+  background: #101016; border-radius: 10px; padding: 14px; margin: 12px 0; text-align: center;
+  font-size: 18px; font-weight: 600; min-height: 54px;
+}
+.cal-result .sub { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 4px; }
+.spinner {
+  width: 32px; height: 32px; margin: 8px auto; border-radius: 50%;
+  border: 3px solid var(--card2); border-top-color: var(--accent); animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 30;
+  background: #2a2a35; padding: 12px 14px; border-radius: 12px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,.4);
+}
